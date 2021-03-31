@@ -1,0 +1,1 @@
+from allennlp_models.my_project.models.apin_seq2seq import ApinSeq2Seq

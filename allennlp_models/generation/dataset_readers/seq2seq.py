@@ -14,8 +14,11 @@ from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 
-logger = logging.getLogger(__name__)
+import logging
+logger = logging.getLogger("spacy")
+logger.setLevel(logging.ERROR)
 
+logger = logging.getLogger(__name__)
 
 @DatasetReader.register("seq2seq")
 class Seq2SeqDatasetReader(DatasetReader):

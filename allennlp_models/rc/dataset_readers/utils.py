@@ -172,6 +172,30 @@ def find_valid_answer_spans(
                 spans.append((span_start, span_end))
     return spans
 
+def make_apin_comprehension_instance(
+    passage_tokens: List[Token],
+    target_tokens : List[Token],
+    token_indexers: Dict[str, TokenIndexer],
+    token_spans: List[Tuple[int, int]] = None,
+) -> Instance:
+    if token_spans:
+        # There may be multiple answer annotations, so we pick the one that occurs the most.  This
+        # only matters on the SQuAD dev set, and it means our computed metrics ("start_acc",
+        # "end_acc", and "span_acc") aren't quite the same as the official metrics, which look at
+        # all of the annotations.  This is why we have a separate official SQuAD metric calculation
+        # (the "em" and "f1" metrics use the official script).
+        candidate_answers: Counter = Counter()
+        for span_start, span_end in token_spans:
+            candidate_answers[(span_start, span_end)] += 1
+        span_start, span_end = candidate_answers.most_common(1)[0][0]
+
+    answer_token = passage_tokens[span_start:span_end+1]
+    source_tokens = [*passage_tokens, *answer_token]
+    source_field = TextField(source_tokens, token_indexers)
+    target_field = TextField(target_tokens, token_indexers)
+
+    return Instance({"source_tokens": source_field, "target_tokens": target_field})
+
 
 def make_reading_comprehension_instance(
     question_tokens: List[Token],

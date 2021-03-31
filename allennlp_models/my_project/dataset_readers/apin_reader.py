@@ -11,6 +11,7 @@ from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 from allennlp.data.tokenizers import Token, Tokenizer, SpacyTokenizer
 
 from allennlp_models.rc.dataset_readers import utils
+from allennlp_models.my_project.dataset_readers.corenlp import CoreNLP
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,8 @@ logger = logging.getLogger("spacy")
 logger.setLevel(logging.ERROR)
 
 
-@DatasetReader.register("squad")
-class SquadReader(DatasetReader):
+@DatasetReader.register("apin_reader")
+class ApinReader(DatasetReader):
     """
     !!! Note
         If you're training on SQuAD v1.1 you should use the [`squad1()`](#squad1) classmethod
@@ -106,6 +107,8 @@ class SquadReader(DatasetReader):
 
     @overrides
     def _read(self, file_path: str):
+        corenlp = CoreNLP()
+        counter = 1
         # if `file_path` is a URL, redirect to the cache
         file_path = cached_path(file_path)
 
@@ -117,10 +120,14 @@ class SquadReader(DatasetReader):
         for article in dataset:
             for paragraph_json in article["paragraphs"]:
                 paragraph = paragraph_json["context"]
-                tokenized_paragraph = self._tokenizer.tokenize(paragraph)
+                tokenized_paragraph = self._tokenizer.tokenize('<PS> ' + paragraph + ' <PE>')
 
                 for question_answer in self.shard_iterable(paragraph_json["qas"]):
                     question_text = question_answer["question"].strip().replace("\n", "")
+                    interro, _ = corenlp.forward(question_text)
+
+                    print(f"question_text = {question_text} ; intero = {interro} ; on iteration - {counter}")
+                    counter += 1
                     is_impossible = question_answer.get("is_impossible", False)
                     if is_impossible:
                         answer_texts: List[str] = []
@@ -137,12 +144,12 @@ class SquadReader(DatasetReader):
                     additional_metadata = {"id": question_answer.get("id", None)}
                     instance = self.text_to_instance(
                         question_text,
+                        interro,
                         paragraph,
                         is_impossible=is_impossible,
                         char_spans=zip(span_starts, span_ends),
                         answer_texts=answer_texts,
                         passage_tokens=tokenized_paragraph,
-                        additional_metadata=additional_metadata,
                     )
                     if instance is not None:
                         yield instance
@@ -151,33 +158,19 @@ class SquadReader(DatasetReader):
     def text_to_instance(
         self,  # type: ignore
         question_text: str,
+        interro : str,
         passage_text: str,
         is_impossible: bool = None,
         char_spans: List[Tuple[int, int]] = None,
         answer_texts: List[str] = None,
         passage_tokens: List[Token] = None,
-        additional_metadata: Dict[str, Any] = None,
     ) -> Optional[Instance]:
 
         if not passage_tokens:
-            passage_tokens = self._tokenizer.tokenize(passage_text)
+            passage_tokens = self._tokenizer.tokenize('[P_start]' + passage_text + '[P_end]')
 
-        if self.no_answer_token is not None:
-            if self.passage_length_limit is not None:
-                passage_tokens = passage_tokens[: self.passage_length_limit - 1]
-            passage_tokens = passage_tokens + [
-                Token(
-                    text=self.no_answer_token,
-                    idx=passage_tokens[-1].idx + len(passage_tokens[-1].text) + 1,  # type: ignore
-                    lemma_=self.no_answer_token,
-                )
-            ]
-        elif self.passage_length_limit is not None:
-            passage_tokens = passage_tokens[: self.passage_length_limit]
-
-        question_tokens = self._tokenizer.tokenize(question_text)
-        if self.question_length_limit is not None:
-            question_tokens = question_tokens[: self.question_length_limit]
+        target_texts = question_text
+        target_tokens = self._tokenizer.tokenize(target_texts)
 
         if is_impossible:
             if self.no_answer_token is None:
@@ -228,62 +221,14 @@ class SquadReader(DatasetReader):
                             len(passage_tokens) - 1,
                         )
                     )
-        return utils.make_reading_comprehension_instance(
+
+        return utils.make_apin_comprehension_instance(
             passage_tokens,
+            target_tokens,
             self._token_indexers,
-            passage_text,
             token_spans,
-            answer_texts,
-            additional_metadata,
-        )
-
-    @classmethod
-    def squad1(
-        cls,
-        tokenizer: Tokenizer = None,
-        token_indexers: Dict[str, TokenIndexer] = None,
-        passage_length_limit: int = None,
-        question_length_limit: int = None,
-        skip_impossible_questions: bool = False,
-        **kwargs,
-    ) -> "SquadReader":
-        """
-        Gives a `SquadReader` suitable for SQuAD v1.1.
-        """
-        return cls(
-            tokenizer=tokenizer,
-            token_indexers=token_indexers,
-            passage_length_limit=passage_length_limit,
-            question_length_limit=question_length_limit,
-            skip_impossible_questions=skip_impossible_questions,
-            no_answer_token=None,
-            **kwargs,
-        )
-
-    @classmethod
-    def squad2(
-        cls,
-        tokenizer: Tokenizer = None,
-        token_indexers: Dict[str, TokenIndexer] = None,
-        passage_length_limit: int = None,
-        question_length_limit: int = None,
-        skip_impossible_questions: bool = False,
-        no_answer_token: str = SQUAD2_NO_ANSWER_TOKEN,
-        **kwargs,
-    ) -> "SquadReader":
-        """
-        Gives a `SquadReader` suitable for SQuAD v2.0.
-        """
-        return cls(
-            tokenizer=tokenizer,
-            token_indexers=token_indexers,
-            passage_length_limit=passage_length_limit,
-            question_length_limit=question_length_limit,
-            skip_impossible_questions=skip_impossible_questions,
-            no_answer_token=no_answer_token,
-            **kwargs,
         )
 
 
-DatasetReader.register("squad1", constructor="squad1")(SquadReader)
-DatasetReader.register("squad2", constructor="squad2")(SquadReader)
+
+DatasetReader.register("apin", constructor="apin")(ApinReader)
